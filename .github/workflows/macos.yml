@@ -1,0 +1,47 @@
+name: macOS application build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: researchscribe
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract application source
+        working-directory: .
+        run: unzip -q ResearchScribe-source.zip
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Apple Silicon
+        run: test "$(uname -m)" = arm64
+      - name: Install dependencies
+        run: |
+          brew install portaudio
+          python -m pip install -e '.[mac,test,vad,package]'
+      - name: Unit and Qt tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q --junitxml=test-results.xml
+      - name: Build application
+        run: python -m PyInstaller ResearchScribe.spec --noconfirm
+      - name: Package experimental unsigned app
+        run: |
+          mkdir dmg-stage
+          cp -R dist/ResearchScribe.app dmg-stage/
+          ln -s /Applications dmg-stage/Applications
+          hdiutil create -volname ResearchScribe -srcfolder dmg-stage -ov -format UDZO ResearchScribe-unsigned.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ResearchScribe-macOS-arm64-experimental
+          path: |
+            researchscribe/ResearchScribe-unsigned.dmg
+            researchscribe/test-results.xml
+          if-no-files-found: error

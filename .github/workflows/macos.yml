@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+concurrency:
+  group: macos-build
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -16,7 +19,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Extract application source
         working-directory: .
-        run: unzip -q ResearchScribe-source.zip
+        run: |
+          base64 -D -i source.b64 > source.zip
+          unzip -q source.zip
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -32,6 +37,10 @@ jobs:
         run: python -m pytest -q --junitxml=test-results.xml
       - name: Build application
         run: python -m PyInstaller ResearchScribe.spec --noconfirm
+      - name: Frozen application smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -c "import subprocess; subprocess.run(['dist/ResearchScribe.app/Contents/MacOS/ResearchScribe', '--self-test'], check=True, timeout=120)"
       - name: Package experimental unsigned app
         run: |
           mkdir dmg-stage
